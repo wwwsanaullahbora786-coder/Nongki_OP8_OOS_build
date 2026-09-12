@@ -1,0 +1,157 @@
+name: Build Oneplus 8 (OxygenOS 13.1 A13) [merged repo, bare / optional KSU]
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+env:
+  # Device env
+  DEVICE_NAME : "oneplus_8"
+  DEVICE_CODENAME : "instantnoodle"
+
+  CUSTOM_CMDS : "CLANG_TRIPLE=aarch64-linux-android-"
+  EXTRA_CMDS : 'KCFLAGS="-Wno-strict-prototypes -Wno-incompatible-function-pointer-types -Wno-deprecated-non-prototype -Wno-implicit-int -Wno-int-to-pointer-cast -Wno-pointer-to-int-cast -Wno-implicit-function-declaration -Wno-unused-but-set-variable"'
+
+  # Single merged repo: kernel + vendor/devicetree + techpack already in-tree.
+  # No VENDOR_SOURCE — build-ready no longer clones/merges a second repo.
+  KERNEL_SOURCE : "https://github.com/TropsPk/android_kernel_oneplus_sm8250.git"
+  KERNEL_BRANCH : "op8"
+
+  CLANG_SOURCE : "https://github.com/llvm/llvm-project/releases/download/llvmorg-19.1.7/LLVM-19.1.7-Linux-X64.tar.xz"
+  CLANG_BRANCH : ""
+
+  GCC_GNU : false
+  GCC_64_SOURCE : "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9.git"
+  GCC_64_BRANCH : "android12L-release"
+  GCC_32_SOURCE : "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9.git"
+  GCC_32_BRANCH : "android12L-release"
+
+  DEFCONFIG_SOURCE: ""
+  DEFCONFIG_NAME : "vendor/kona-perf_defconfig"
+  DEFCONFIG_ORIGIN_IMAGE: ""
+  DEFCONFIG_FROM_BOOT: false
+
+  # Toggle only — KSU is skipped entirely (build-ready gates on this) until
+  # you flip it to "true". Get a bare compile working first, add KSU after.
+  KSU_ENABLE : "false"
+
+  KERNELSU_SOURCE : ""
+  KERNELSU_BRANCH : ""
+
+  KERNELSU_AUTO_GET : "true"
+  KERNELSU_AUTO_FORK : "next" # only read when KSU_ENABLE=true; pick your fork later
+
+  SUSFS_ENABLE : false
+  SUSFS_FIXED : false
+
+  AK3_SOURCE : "https://github.com/osm0sis/AnyKernel3.git"
+  AK3_BRANCH : "master"
+
+  BOOT_SOURCE : ""
+
+  NEED_DTBO : false
+  NEED_SAFE_DTBO : false
+
+  ROM_TEXT : "oos13.1_a13"
+
+  # Other env
+  PYTHON_VERSION: "3"
+
+  PACK_METHOD: "Anykernel3"
+  PACK_KMODULES: "false"
+
+  KERNELSU_METHOD: "shell"
+
+  PATCHES_SOURCE: ""
+  PATCHES_BRANCH: ""
+
+  SUSFS_FOLDER_FIXED: ""
+  SUSFS_PATCH_FIXED: ""
+
+  DROIDSPACES_ENABLE: "false"
+  NOMOUNT_ENABLE: "false"
+
+  HOOK_METHOD: "syscall"
+
+  KERNEL_PATCH: "false"
+
+  KPM_ENABLE: "false"
+  KPM_INLINE: "false"
+  KPM_KPATCH_NEXT: "false"
+  KPM_PATCH_SOURCE: ""
+
+  BASEBAND_GUARD_ENABLE: "false"
+  BASEBAND_GUARD_BOOT: "false"
+
+  GENERATE_DTB: "false"
+  GENERATE_CHIP: "qcom"
+
+  BUILD_DEBUGGER: "false"
+  SKIP_PATCH: "false"
+
+  BUILD_OTHER_CONFIG: "false"
+  MERGE_CONFIG_FILES: ""
+
+  FREE_MORE_SPACE: "false"
+
+jobs:
+  build-kernel:
+    name: Oneplus 8 (OxygenOS 13.1 A13) [merged repo, bare / optional KSU]
+    runs-on: ubuntu-latest
+    env:
+      CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
+      CCACHE_NOHASHDIR: "true"
+      CCACHE_HARDLINK: "true"
+
+    steps:
+      - name: ⏰ Checkout repository
+        uses: actions/checkout@v6
+
+      - name: ⌛️ Compilation environment preparation
+        uses: ./.github/workflows/build-env
+
+      - name: ⚙️ Get neccssary tools
+        uses: ./.github/workflows/build-ready
+
+      - name: 🏗️ Verify merged vendor/devicetree layout
+        run: |
+          # Vendor/devicetree/techpack are real files already committed in the
+          # merged repo (not symlinks into a separate vendor/ checkout), so
+          # there's nothing to clone or place — just sanity-check they exist.
+          cd $GITHUB_WORKSPACE/kernel/device_kernel
+          for check in arch/arm64/boot/dts/vendor drivers/soc/oplus/system drivers/power/oplus fs/erofs techpack/camera/Makefile techpack/display/Makefile techpack/video/Makefile; do
+            if [ -e "$check" ]; then
+              echo "[+] $check present."
+            else
+              echo "[-] $check missing from merged repo, build will fail."
+              false
+            fi
+          done
+          echo "[+] Merged vendor/devicetree/techpack layout verified."
+
+      - name: 📌 Kernel version suffix (OOS)
+        run: |
+          cd $GITHUB_WORKSPACE/kernel/device_kernel
+          echo "-g$(git rev-parse --short HEAD)-oos-merged" > .scmversion
+          echo "[+] .scmversion written."
+
+      - name: 🚀 Build Process
+        uses: ./.github/workflows/build-process
+
+      - name: 🖼️ Generate DTB (OOS concat kona dtb variants)
+        run: |
+          cd $GITHUB_WORKSPACE/kernel/device_kernel
+          DTB_DIR="out/arch/arm64/boot/dts/vendor/19821"
+          if [ -f "$DTB_DIR/kona-mtp.dtb" ]; then
+            cat "$DTB_DIR/kona-mtp.dtb" > out/arch/arm64/boot/dtb.img
+            echo "[+] Generated dtb.img from kona-mtp.dtb"
+          else
+            cat out/arch/arm64/boot/dts/vendor/*/*.dtb > out/arch/arm64/boot/dtb.img
+            echo "[+] Generated dtb.img (concat all vendor dtbs)"
+          fi
+
+      - name: 🔩 Pack Process
+        uses: ./.github/workflows/pack-process
+
+      - name: ✏️ Upload Artifacts
+        uses: ./.github/workflows/upload-files
