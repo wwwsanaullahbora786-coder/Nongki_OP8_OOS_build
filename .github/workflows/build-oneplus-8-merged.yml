@@ -15,7 +15,7 @@ env:
   # Single merged repo: kernel + vendor/devicetree + techpack already in-tree.
   # No VENDOR_SOURCE — build-ready no longer clones/merges a second repo.
   KERNEL_SOURCE : "https://github.com/TropsPk/android_kernel_oneplus_sm8250.git"
-  KERNEL_BRANCH : "op8"
+  KERNEL_BRANCH : "op"
 
   CLANG_SOURCE : "https://github.com/llvm/llvm-project/releases/download/llvmorg-19.1.7/LLVM-19.1.7-Linux-X64.tar.xz"
   CLANG_BRANCH : ""
