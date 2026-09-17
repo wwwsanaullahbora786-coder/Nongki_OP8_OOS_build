@@ -113,28 +113,6 @@ jobs:
       - name: ⚙️ Get neccssary tools
         uses: ./.github/workflows/build-ready
 
-      - name: 🏗️ Verify merged vendor/devicetree layout
-        run: |
-          # Vendor/devicetree/techpack are real files already committed in the
-          # merged repo (not symlinks into a separate vendor/ checkout), so
-          # there's nothing to clone or place — just sanity-check they exist.
-          cd $GITHUB_WORKSPACE/kernel/device_kernel
-          for check in arch/arm64/boot/dts/vendor drivers/soc/oplus/system drivers/power/oplus fs/erofs techpack/camera/Makefile techpack/display/Makefile techpack/video/Makefile; do
-            if [ -e "$check" ]; then
-              echo "[+] $check present."
-            else
-              echo "[-] $check missing from merged repo, build will fail."
-              false
-            fi
-          done
-          echo "[+] Merged vendor/devicetree/techpack layout verified."
-
-      - name: 📌 Kernel version suffix (OOS)
-        run: |
-          cd $GITHUB_WORKSPACE/kernel/device_kernel
-          echo "-g$(git rev-parse --short HEAD)-oos-merged" > .scmversion
-          echo "[+] .scmversion written."
-
       - name: 🚀 Build Process
         uses: ./.github/workflows/build-process
 
